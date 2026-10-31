@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Money Tracker</title>
+<meta name="description" content="Tracks the money you have, what is still to pay and what is left, in rand.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#EEF1F6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A101B" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Money">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one phone-width column. Hero shows what is left once everything is paid, then add form, to-pay list, paid list, money-in panel. */
+:root{
+  color-scheme:light;
+  --bg:#EEF1F6; --surface:#FFFFFF; --inset:#E7EBF3; --line:#D6DCE8;
+  --ink:#0E1726; --ink-2:#4B5772;
+  --accent:#2446D6; --on-accent:#FFFFFF; --accent-soft:#E2E8FF;
+  --good:#0B7A53; --on-good:#FFFFFF; --good-soft:#DAF2E8;
+  --warn:#8F5300; --warn-soft:#FFEFCF;
+  --bad:#B3261E; --bad-soft:#FDE3E0;
+  --seg-paid:#A3AFC7;
+  --font-display:'Bricolage Grotesque',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0A101B; --surface:#121A2A; --inset:#0D1422; --line:#232F47;
+    --ink:#E9EEF8; --ink-2:#9AA8C3;
+    --accent:#8AA2FF; --on-accent:#0A101B; --accent-soft:#1A2750;
+    --good:#52D6A5; --on-good:#06261C; --good-soft:#0E2D26;
+    --warn:#F2B84B; --warn-soft:#33260C;
+    --bad:#FF8F85; --bad-soft:#3B1815;
+    --seg-paid:#5A6A8C;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0A101B; --surface:#121A2A; --inset:#0D1422; --line:#232F47;
+  --ink:#E9EEF8; --ink-2:#9AA8C3;
+  --accent:#8AA2FF; --on-accent:#0A101B; --accent-soft:#1A2750;
+  --good:#52D6A5; --on-good:#06261C; --good-soft:#0E2D26;
+  --warn:#F2B84B; --warn-soft:#33260C;
+  --bad:#FF8F85; --bad-soft:#3B1815;
+  --seg-paid:#5A6A8C;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.4}
+.wrap{max-width:560px;margin:0 auto;padding-block:calc(12px + env(safe-area-inset-top,0px)) calc(112px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+.wrap>*,.app>*{min-width:0}
+.app{display:flex;flex-direction:column;gap:16px}
+
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+h1{margin:0;font:700 24px/1.1 var(--font-display);letter-spacing:-.01em}
+.sub{margin:4px 0 0;color:var(--ink-2);font-size:13px}
+.sync{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);padding-top:6px}
+.sync::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dot,var(--ink-2));flex:none}
+.sync[data-state="saved"]{--dot:var(--good)}
+.sync[data-state="saving"]{--dot:var(--warn)}
+.sync[data-state="error"]{--dot:var(--bad)}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+h2{margin:0;font:700 18px/1.2 var(--font-display);letter-spacing:-.005em}
+.hint{margin:6px 0 0;color:var(--ink-2);font-size:13.5px}
+.stack{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+
+.hero{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:18px 16px 16px}
+.eyebrow{margin:0;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);font-weight:600}
+.figure{margin:8px 0 14px;font:700 clamp(40px,13vw,56px)/1 var(--font-display);letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--good);overflow-wrap:anywhere}
+.figure[data-tone="bad"]{color:var(--bad)}
+.figure .cur{font-size:.5em;font-weight:600;margin-right:.1em;opacity:.8}
+.figure .dec{font-size:.5em;font-weight:600;opacity:.7}
+.bar{display:flex;gap:2px;height:10px;border-radius:99px;overflow:hidden;background:var(--inset)}
+.bar i{display:block;height:100%;min-width:0;transition:width .35s ease}
+.s-paid{background:var(--seg-paid)}
+.s-pend{background:var(--accent)}
+.s-left{background:var(--good)}
+.bar[data-short="1"] .s-pend{background:var(--bad)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:12px;margin:16px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+.stat{min-width:0}
+.stat dt{font-size:11.5px;color:var(--ink-2);display:flex;align-items:center;gap:6px}
+.stat dd{margin:2px 0 0;font-weight:600;font-size:16px;line-height:1.2;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stat dd[data-tone="bad"]{color:var(--bad)}
+.sw{width:8px;height:8px;border-radius:3px;flex:none}
+
+.alert{margin:0;padding:12px 14px;border-radius:12px;background:var(--bad-soft);color:var(--bad);font-size:14px;font-weight:500}
+.example{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 14px;border-radius:12px;background:var(--warn-soft);color:var(--warn);font-size:14px;font-weight:500}
+.err{margin:0;color:var(--bad);font-size:13.5px;font-weight:500}
+
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+label{font-size:13px;font-weight:600;color:var(--ink-2)}
+input{font:inherit;font-size:16px;color:var(--ink);background:var(--inset);border:1px solid var(--line);border-radius:12px;padding:0 14px;height:48px;width:100%;min-width:0}
+input::placeholder{color:var(--ink-2);opacity:.7}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media (max-width:520px){.row2{grid-template-columns:minmax(0,1fr)}}
+input[type="date"]{-webkit-appearance:none;appearance:none;display:block;text-align:left;min-height:48px;line-height:normal}
+input[type="date"]::-webkit-date-and-time-value{text-align:left;min-height:1.3em}
+[hidden]{display:none!important}
+form.addform{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+
+.btn{height:48px;border-radius:12px;border:1px solid transparent;font:600 16px var(--font-body);padding:0 18px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--on-accent)}
+.btn.line{background:transparent;border-color:var(--line);color:var(--ink)}
+.btn.small{height:40px;padding:0 14px;font-size:14px}
+.btn.block{width:100%}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.linkbtn{background:none;border:0;color:var(--ink-2);font:500 14px var(--font-body);text-decoration:underline;padding:8px;cursor:pointer;align-self:center}
+.example .btn{background:transparent;border-color:currentColor;color:inherit}
+input:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.sectionhead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.sectionhead span{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.list{list-style:none;margin:8px 0 0;padding:0}
+.item{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;column-gap:4px;border-bottom:1px solid var(--line)}
+.item:last-child{border-bottom:0}
+.tick{width:44px;height:44px;display:grid;place-items:center;background:none;border:0;padding:0;cursor:pointer}
+.circle{width:26px;height:26px;border-radius:50%;border:2px solid var(--ink-2);display:grid;place-items:center;color:var(--on-good);transition:background .15s,border-color .15s}
+.circle svg{width:14px;height:14px;opacity:0}
+.paid .circle{background:var(--good);border-color:var(--good)}
+.paid .circle svg{opacity:1}
+.body{background:none;border:0;padding:10px 0;text-align:left;font:inherit;color:inherit;min-width:0;cursor:pointer}
+.name{display:block;font-size:16px;font-weight:600;overflow-wrap:anywhere}
+.paid .name{text-decoration:line-through;color:var(--ink-2);font-weight:500}
+.meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.amt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;padding-left:8px}
+.paid .amt{color:var(--ink-2);font-weight:500}
+.pill{font-size:11.5px;font-weight:600;border-radius:99px;padding:1px 8px}
+.pill.over{background:var(--bad-soft);color:var(--bad)}
+.pill.soon{background:var(--warn-soft);color:var(--warn)}
+.pill.need{background:var(--accent-soft);color:var(--accent)}
+.tick.locked{cursor:default}
+.tick.locked .circle{border-style:dashed;opacity:.75;color:var(--ink-2);font:700 13px var(--font-body)}
+.amt.unknown{color:var(--ink-2);font-weight:600}
+.note{margin:12px 0 0;font-size:12.5px;color:var(--ink-2)}
+.empty{padding:14px 0 4px;color:var(--ink-2);font-size:14px}
+.item.editing{display:block;padding:12px 0}
+.editform{display:flex;flex-direction:column;gap:12px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+
+details>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;min-height:44px;font:700 18px var(--font-display)}
+details>summary::-webkit-details-marker{display:none}
+details>summary .grow{flex:1;min-width:0}
+details>summary .val{font:600 15px var(--font-body);color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+details>summary::after{content:"";width:8px;height:8px;border-right:2px solid var(--ink-2);border-bottom:2px solid var(--ink-2);transform:rotate(45deg);transition:transform .2s;flex:none;margin:0 4px 4px 0}
+details[open]>summary::after{transform:rotate(-135deg);margin-bottom:-4px}
+.moneyform{display:flex;gap:10px;align-items:flex-end;margin-top:12px}
+.moneyform .field{flex:1}
+
+.toast{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;padding:0 max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));pointer-events:none;z-index:20}
+.toast>div{pointer-events:auto;display:flex;gap:14px;align-items:center;background:var(--ink);color:var(--bg);border-radius:14px;padding:10px 12px 10px 16px;font-size:14px;max-width:520px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.toast button{background:none;border:0;color:inherit;font:inherit;font-weight:700;text-decoration:underline;padding:6px 8px;cursor:pointer;min-height:36px}
+
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="top">
+    <div>
+      <h1>Money Tracker</h1>
+      <p class="sub">What you have and what is still to pay, in rand</p>
+    </div>
+    <span class="sync" id="sync" data-state="saved" role="status">Saved on this phone</span>
+  </header>
+
+  <section class="card" id="onboard" hidden aria-labelledby="obH">
+    <h2 id="obH">How much money do you have right now?</h2>
+    <p class="hint">Enter what you can spend. Every item you tick off is taken out of this amount.</p>
+    <form id="obForm" class="stack" novalidate>
+      <div class="field">
+        <label for="oAmt">Amount in rand</label>
+        <input id="oAmt" inputmode="decimal" autocomplete="off" placeholder="e.g. 25000">
+      </div>
+      <p class="err" id="oErr" role="alert" hidden></p>
+      <button class="btn primary block" type="submit">Start tracking</button>
+    </form>
+    <div class="stack">
+      <button class="btn line block" type="button" id="obExample">See it with example items</button>
+      <button class="linkbtn" type="button" id="obSkip">Skip for now</button>
+    </div>
+  </section>
+
+  <div class="app" id="app" hidden>
+    <div class="example" id="exampleBanner" hidden>
+      <span>These are example figures, not yours.</span>
+      <button class="btn small" type="button" id="clearExample">Clear examples</button>
+    </div>
+
+    <section class="hero" aria-label="Summary">
+      <p class="eyebrow" id="eyebrow">Available now</p>
+      <p class="figure" id="leftFig" data-tone="good"></p>
+      <div class="bar" id="bar" role="img" aria-label="">
+        <i class="s-paid" id="segPaid"></i><i class="s-pend" id="segPend"></i><i class="s-left" id="segLeft"></i>
+      </div>
+      <dl class="stats">
+        <div class="stat"><dt><span class="sw" style="background:var(--accent)"></span>Still to pay</dt><dd id="stUnpaid"></dd></div>
+        <div class="stat"><dt><span class="sw" style="background:var(--seg-paid)"></span>Paid so far</dt><dd id="stPaid"></dd></div>
+        <div class="stat"><dt>Left after all paid</dt><dd id="stLeft"></dd></div>
+      </dl>
+      <p class="note" id="unknownNote" hidden></p>
+    </section>
+
+    <p class="alert" id="alert" role="status" hidden></p>
+
+    <section class="card" aria-labelledby="addH">
+      <h2 id="addH">Add something to pay</h2>
+      <form class="addform" id="addForm" novalidate>
+        <div class="field">
+          <label for="fName">What is it for?</label>
+          <input id="fName" maxlength="80" autocomplete="off" enterkeyhint="next" placeholder="e.g. New glasses">
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="fAmt">Amount (optional)</label>
+            <input id="fAmt" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="e.g. 1800">
+          </div>
+          <div class="field">
+            <label for="fDue">Due date (optional)</label>
+            <input id="fDue" type="date">
+          </div>
+        </div>
+        <p class="hint" style="margin:0">Don't know the cost yet? Leave the amount empty. It can't be ticked off until you add an amount, and opening it will ask for one.</p>
+        <p class="err" id="addErr" role="alert" hidden></p>
+        <button class="btn primary block" type="submit">Add to list</button>
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="toPayH">
+      <div class="sectionhead"><h2 id="toPayH">To pay</h2><span id="toPayMeta"></span></div>
+      <ul class="list" id="toPayList"></ul>
+    </section>
+
+    <details class="card" id="paidBox" hidden>
+      <summary><span class="grow" id="paidLabel">Paid</span><span class="val" id="paidSum"></span></summary>
+      <ul class="list" id="paidList"></ul>
+    </details>
+
+    <details class="card" id="moneyBox">
+      <summary><span class="grow">Total money</span><span class="val" id="moneyNow"></span></summary>
+      <p class="hint">This is the total you have had access to. Every item you tick off is taken out of it.</p>
+      <form class="moneyform" id="totalForm" novalidate>
+        <div class="field">
+          <label for="mTotal">Total received (R)</label>
+          <input id="mTotal" inputmode="decimal" autocomplete="off">
+        </div>
+        <button class="btn line" type="submit">Save</button>
+      </form>
+      <form class="moneyform" id="moreForm" novalidate>
+        <div class="field">
+          <label for="mAdd">More money released (R)</label>
+          <input id="mAdd" inputmode="decimal" autocomplete="off" placeholder="e.g. 5000">
+        </div>
+        <button class="btn line" type="submit">Add</button>
+      </form>
+      <p class="err" id="mErr" role="alert" hidden style="margin-top:10px"></p>
+      <p class="hint" style="margin-top:18px">Everything is saved on this phone only. Back it up now and then, so you can restore it if the phone is lost or reset.</p>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn line small" type="button" id="bkExport">Back up</button>
+        <label class="btn line small" for="bkImport">Restore</label>
+        <input class="vh" id="bkImport" type="file" accept="application/json,.json">
+      </div>
+      <p class="err" id="bkErr" role="alert" hidden style="margin-top:10px"></p>
+    </details>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" hidden><div></div></div>
+
+<script>
+(function(){
+'use strict';
+
+/*PURE*/
+const NB=' ';
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function group(n){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,NB);}
+function parts(c){const a=Math.abs(c);return {neg:c<0,int:group(Math.floor(a/100)),dec:String(a%100).padStart(2,'0')};}
+function rand(c,full){const p=parts(c);const d=(p.dec==='00'&&!full)?'':','+p.dec;return (p.neg?'−':'')+'R'+NB+p.int+d;}
+function parseRand(raw){
+  let s=String(raw||'').replace(/[Rr\s ]/g,'');
+  if(!s) return null;
+  const lc=s.lastIndexOf(','), ld=s.lastIndexOf('.');
+  if(lc>-1&&ld>-1){
+    if(lc>ld){s=s.replace(/\./g,'').replace(',','.');}else{s=s.replace(/,/g,'');}
+  }else if(lc>-1){
+    if(/,\d{1,2}$/.test(s)&&s.indexOf(',')===lc){s=s.replace(',','.');}else{s=s.replace(/,/g,'');}
+  }
+  if(!/^\d+(\.\d{1,2})?$/.test(s)) return null;
+  return Math.round(parseFloat(s)*100);
+}
+function inputAmt(c){const s=(c/100).toFixed(2).replace('.',',');return s.endsWith(',00')?s.slice(0,-3):s;}
+function ymd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function dayNum(s){const a=s.split('-').map(Number);return Math.round(Date.UTC(a[0],a[1]-1,a[2])/86400000);}
+function fmtDay(s){const a=s.split('-').map(Number);return a[2]+' '+MONTHS[a[1]-1]+(a[0]!==new Date().getFullYear()?' '+a[0]:'');}
+function totalsOf(items,starting){
+  let paid=0,unpaid=0,unknown=0;
+  for(const it of items){
+    if(it.cents==null){if(!it.paid)unknown++;continue;}
+    if(it.paid)paid+=it.cents;else unpaid+=it.cents;
+  }
+  const available=starting-paid;
+  return {paid,unpaid,unknown,available,left:available-unpaid};
+}
+function dueInfo(it,today){
+  if(it.paid||!it.due) return null;
+  const diff=dayNum(it.due)-dayNum(today);
+  if(diff<0) return {cls:'over',text:'Overdue by '+(-diff)+(diff===-1?' day':' days')};
+  if(diff===0) return {cls:'soon',text:'Due today'};
+  if(diff===1) return {cls:'soon',text:'Due tomorrow'};
+  if(diff<=7) return {cls:'soon',text:'Due in '+diff+' days'};
+  return null;
+}
+/*END PURE*/
+
+const KEY='money-tracker-v1';
+const CHECK='<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5l3 3 6-7"/></svg>';
+const $=id=>document.getElementById(id);
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
+function uid(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);}
+function blank(){return {v:1,started:false,example:false,starting:0,items:[],updatedAt:0};}
+function clean(o){
+  if(!o||typeof o!=='object'||!Array.isArray(o.items)) return null;
+  const s=blank();
+  s.started=!!o.started; s.example=!!o.example;
+  s.starting=Number.isFinite(o.starting)?Math.round(o.starting):0;
+  s.updatedAt=Number(o.updatedAt)||0;
+  s.items=o.items.filter(i=>i&&typeof i.name==='string'&&(i.cents==null||Number.isFinite(i.cents))).map(i=>({
+    id:String(i.id||uid()),name:i.name.slice(0,80),cents:i.cents==null?null:Math.round(i.cents),
+    due:/^\d{4}-\d{2}-\d{2}$/.test(i.due||'')?i.due:null,
+    paid:!!i.paid&&i.cents!=null,paidAt:i.paidAt||null,createdAt:Number(i.createdAt)||0
+  }));
+  return s;
+}
+
+let state=blank(), editingId=null, editMode='full', pendingRender=false, TODAY=ymd(new Date());
+let toastTimer=null;
+
+/* ---------- saving ---------- */
+function setSync(st,text){const e=$('sync');e.dataset.state=st;e.textContent=text;}
+function save(){
+  state.updatedAt=Date.now();
+  try{localStorage.setItem(KEY,JSON.stringify(state));setSync('saved','Saved on this phone');}
+  catch(e){setSync('error',"Couldn't save. Is storage blocked?");}
+}
+
+/* ---------- toast ---------- */
+function hideToast(){$('toast').hidden=true;}
+function toast(msg,undo){
+  const box=$('toast').firstElementChild;
+  box.textContent='';
+  box.append(el('span',null,msg));
+  if(undo){
+    const b=el('button',null,'Undo');b.type='button';
+    b.addEventListener('click',()=>{undo();hideToast();});
+    box.append(b);
+  }
+  $('toast').hidden=false;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(hideToast,6000);
+}
+
+/* ---------- actions ---------- */
+function find(id){return state.items.find(i=>i.id===id);}
+function togglePaid(id){
+  const it=find(id);if(!it||it.cents==null) return;
+  it.paid=!it.paid;
+  it.paidAt=it.paid?new Date().toISOString():null;
+  save();render();
+  toast(it.paid?(it.name+' marked paid. '+rand(it.cents)+' taken out.'):(it.name+' is back on the list. '+rand(it.cents)+' put back.'),()=>togglePaid(id));
+}
+function removeItem(id){
+  const i=state.items.findIndex(x=>x.id===id);if(i<0) return;
+  const it=state.items.splice(i,1)[0];
+  editingId=null;save();render();
+  toast('Removed '+it.name+'.',()=>{state.items.splice(Math.min(i,state.items.length),0,it);save();render();});
+}
+function loadExamples(){
+  const plus=n=>{const d=new Date();d.setDate(d.getDate()+n);return ymd(d);};
+  const mk=(name,cents,due,paid)=>({id:uid(),name,cents,due,paid:!!paid,paidAt:paid?new Date().toISOString():null,createdAt:Date.now()+Math.random()});
+  state=blank();
+  state.started=true;state.example=true;state.starting=2500000;
+  state.items=[mk('New glasses',380000,plus(6)),mk('Dental check-up',115000,plus(12)),mk('Textbooks',265000,plus(21)),mk('Laptop repair',420000,null),mk('Eye specialist visit',null,plus(9)),mk('Eye test',65000,null,true)];
+  save();render();
+}
+function showErr(id,msg){const e=$(id);e.textContent=msg||'';e.hidden=!msg;}
+const AMT_HELP='Enter an amount like 1800 or 1 800,50.';
+
+/* ---------- render ---------- */
+function setFigure(node,c){
+  node.textContent='';
+  const p=parts(c);
+  if(p.neg) node.append(document.createTextNode('−'));
+  node.append(el('span','cur','R'),document.createTextNode(p.int),el('span','dec',','+p.dec));
+}
+function setSeg(id,frac){const e=$(id);e.style.width=(frac*100)+'%';e.hidden=frac<=0.0005;}
+function sortOpen(a,b){
+  if(a.due&&b.due&&a.due!==b.due) return a.due<b.due?-1:1;
+  if(a.due&&!b.due) return -1;
+  if(!a.due&&b.due) return 1;
+  return a.createdAt-b.createdAt;
+}
+function itemEl(it){
+  if(editingId===it.id) return editMode==='price'?priceEl(it):editEl(it);
+  const li=el('li','item'+(it.paid?' paid':''));
+  const unknown=it.cents==null;
+  let tick;
+  if(unknown){
+    tick=el('span','tick locked');tick.setAttribute('aria-hidden','true');
+    tick.append(el('span','circle','?'));
+  }else{
+    tick=el('button','tick');tick.type='button';
+    tick.setAttribute('role','checkbox');
+    tick.setAttribute('aria-checked',String(it.paid));
+    tick.setAttribute('aria-label',(it.paid?'Mark not paid: ':'Mark paid: ')+it.name);
+    const c=el('span','circle');c.innerHTML=CHECK;tick.append(c);
+    tick.addEventListener('click',()=>togglePaid(it.id));
+  }
+  const body=el('button','body');body.type='button';
+  body.setAttribute('aria-label',(unknown?'Set the amount for ':'Edit ')+it.name);
+  body.append(el('span','name',it.name));
+  const meta=el('span','meta');
+  if(it.paid){
+    meta.append(el('span',null,it.paidAt?'Paid '+fmtDay(ymd(new Date(it.paidAt))):'Paid'));
+  }else{
+    meta.append(el('span',null,it.due?'Due '+fmtDay(it.due):'No due date'));
+    const di=dueInfo(it,TODAY);
+    if(di) meta.append(el('span','pill '+di.cls,di.text));
+    if(unknown) meta.append(el('span','pill need','Tap to add amount'));
+  }
+  body.append(meta);
+  body.addEventListener('click',()=>{editingId=it.id;editMode=unknown?'price':'full';render();});
+  li.append(tick,body,el('span','amt'+(unknown?' unknown':''),unknown?'R ?':rand(it.cents)));
+  return li;
+}
+function priceEl(it){
+  const li=el('li','item editing');
+  const f=el('form','editform');f.noValidate=true;
+  f.innerHTML='<div class="field"><label for="pAmt" id="pLbl"></label>'
+   +'<input id="pAmt" inputmode="decimal" autocomplete="off" placeholder="e.g. 1800"></div>'
+   +'<p class="err" id="pErr" role="alert" hidden></p>'
+   +'<div class="actions"><button class="btn primary small" type="submit">Save amount</button>'
+   +'<button class="btn line small" type="button" data-act="cancel">Not yet</button>'
+   +'<button class="btn line small" type="button" data-act="more">Edit or delete</button></div>';
+  f.querySelector('#pLbl').textContent='How much will '+it.name+' cost?';
+  f.addEventListener('submit',e=>{
+    e.preventDefault();
+    const c=parseRand(f.querySelector('#pAmt').value);
+    const err=f.querySelector('#pErr');
+    if(c===null||c<=0){err.textContent=AMT_HELP;err.hidden=false;return;}
+    it.cents=c;editingId=null;save();render();
+    toast('Amount saved. You can tick '+it.name+' off once it is paid.',()=>{it.cents=null;it.paid=false;it.paidAt=null;save();render();});
+  });
+  f.addEventListener('click',e=>{
+    const b=e.target.closest('button[data-act]');if(!b) return;
+    if(b.dataset.act==='cancel'){editingId=null;render();}
+    else if(b.dataset.act==='more'){editMode='full';render();}
+  });
+  li.append(f);
+  return li;
+}
+function editEl(it){
+  const li=el('li','item editing');
+  const f=el('form','editform');f.noValidate=true;
+  f.innerHTML='<div class="field"><label for="eName">What it is for</label><input id="eName" maxlength="80" autocomplete="off"></div>'
+   +'<div class="row2"><div class="field"><label for="eAmt">Amount (R)</label><input id="eAmt" inputmode="decimal" autocomplete="off"></div>'
+   +'<div class="field"><label for="eDue">Due date</label><input id="eDue" type="date"></div></div>'
+   +'<p class="err" id="eErr" role="alert" hidden></p>'
+   +'<div class="actions"><button class="btn primary small" type="submit">Save</button>'
+   +'<button class="btn line small" type="button" data-act="cancel">Cancel</button>'
+   +'<button class="btn line small" type="button" data-act="clear">Clear date</button>'
+   +'<button class="btn line small danger" type="button" data-act="delete">Delete</button></div>';
+  f.querySelector('#eName').value=it.name;
+  f.querySelector('#eAmt').value=it.cents==null?'':inputAmt(it.cents);
+  if(!it.paid) f.querySelector('#eAmt').placeholder='Empty if unknown';
+  f.querySelector('#eDue').value=it.due||'';
+  f.addEventListener('submit',e=>{
+    e.preventDefault();
+    const name=f.querySelector('#eName').value.trim();
+    const raw=f.querySelector('#eAmt').value.trim();
+    const c=raw?parseRand(raw):null;
+    const err=f.querySelector('#eErr');
+    const bad=!name?'Type what the payment is for.':(raw&&(c===null||c<=0))?AMT_HELP:(!raw&&it.paid)?'A paid item needs an amount.':'';
+    if(bad){err.textContent=bad;err.hidden=false;return;}
+    it.name=name;it.cents=raw?c:null;it.due=f.querySelector('#eDue').value||null;
+    editingId=null;save();render();
+  });
+  let armTimer=null;
+  f.addEventListener('click',e=>{
+    const b=e.target.closest('button[data-act]');if(!b) return;
+    const act=b.dataset.act;
+    if(act==='cancel'){editingId=null;render();}
+    else if(act==='clear'){f.querySelector('#eDue').value='';}
+    else if(act==='delete'){
+      if(b.dataset.armed==='1'){clearTimeout(armTimer);removeItem(it.id);}
+      else{b.dataset.armed='1';b.textContent='Tap again to delete';armTimer=setTimeout(()=>{b.dataset.armed='';b.textContent='Delete';},4000);}
+    }
+  });
+  li.append(f);
+  return li;
+}
+function render(){
+  TODAY=ymd(new Date());
+  if(editingId&&!find(editingId)) editingId=null;
+  $('onboard').hidden=state.started;
+  $('app').hidden=!state.started;
+  if(!state.started) return;
+  $('exampleBanner').hidden=!state.example;
+
+  const t=totalsOf(state.items,state.starting);
+  const fig=$('leftFig');setFigure(fig,t.available);fig.dataset.tone=t.available<0?'bad':'good';
+  const lf=$('stLeft');lf.textContent=rand(t.left);lf.dataset.tone=t.left<0?'bad':'';
+  $('stUnpaid').textContent=rand(t.unpaid);
+  $('stPaid').textContent=rand(t.paid);
+  const un=$('unknownNote');
+  un.hidden=!t.unknown;
+  if(t.unknown) un.textContent='Not counted yet: '+t.unknown+(t.unknown===1?' item':' items')+' with no amount.';
+  const total=Math.max(state.starting,t.paid+t.unpaid,1);
+  setSeg('segPaid',t.paid/total);setSeg('segPend',t.unpaid/total);setSeg('segLeft',Math.max(0,t.left)/total);
+  const bar=$('bar');
+  bar.dataset.short=t.left<0?'1':'0';
+  bar.setAttribute('aria-label','Paid '+rand(t.paid)+', still to pay '+rand(t.unpaid)+', left '+rand(t.left));
+  const al=$('alert');
+  if(t.left<0){al.hidden=false;al.textContent='Still to pay is '+rand(-t.left)+' more than you have available.';}
+  else al.hidden=true;
+
+  const open=state.items.filter(i=>!i.paid).sort(sortOpen);
+  const done=state.items.filter(i=>i.paid).sort((a,b)=>String(b.paidAt||'').localeCompare(String(a.paidAt||'')));
+  $('toPayMeta').textContent=open.length?(open.length+(open.length===1?' item · ':' items · ')+(t.unpaid===0&&t.unknown?t.unknown+' to price':rand(t.unpaid)+(t.unknown?' + '+t.unknown+' to price':''))):'';
+  const ul=$('toPayList');ul.textContent='';
+  if(open.length){open.forEach(i=>ul.append(itemEl(i)));}
+  else{ul.append(el('li','empty',state.items.length?'Everything is paid. Add the next thing above.':'Nothing to pay yet. Add what you still need to pay, such as glasses.'));}
+  $('paidBox').hidden=!done.length;
+  $('paidLabel').textContent='Paid ('+done.length+')';
+  $('paidSum').textContent=rand(t.paid);
+  const pl=$('paidList');pl.textContent='';
+  done.forEach(i=>pl.append(itemEl(i)));
+  $('moneyNow').textContent=rand(state.starting);
+  const mt=$('mTotal');if(document.activeElement!==mt) mt.value=inputAmt(state.starting);
+  const pa=$('pAmt');if(pa&&document.activeElement!==pa) pa.focus();
+}
+function refresh(){if(editingId){pendingRender=true;}else render();}
+
+/* ---------- events ---------- */
+$('obForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const c=parseRand($('oAmt').value);
+  if(c===null||c<=0){showErr('oErr',AMT_HELP);return;}
+  showErr('oErr','');
+  state.started=true;state.starting=c;save();render();
+});
+$('obExample').addEventListener('click',loadExamples);
+$('obSkip').addEventListener('click',()=>{state.started=true;save();render();});
+$('clearExample').addEventListener('click',()=>{state=blank();save();render();});
+
+$('addForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const name=$('fName').value.trim();
+  const raw=$('fAmt').value.trim();
+  const c=raw?parseRand(raw):null;
+  if(!name){showErr('addErr','Type what the payment is for.');return;}
+  if(raw&&(c===null||c<=0)){showErr('addErr',AMT_HELP);return;}
+  showErr('addErr','');
+  state.items.push({id:uid(),name:name.slice(0,80),cents:raw?c:null,due:$('fDue').value||null,paid:false,paidAt:null,createdAt:Date.now()});
+  $('fName').value='';$('fAmt').value='';$('fDue').value='';
+  save();render();
+  $('fName').focus({preventScroll:true});
+});
+$('totalForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const c=parseRand($('mTotal').value);
+  if(c===null){showErr('mErr',AMT_HELP);return;}
+  showErr('mErr','');
+  const before=state.starting;
+  state.starting=c;save();render();
+  toast('Total set to '+rand(c)+'.',()=>{state.starting=before;save();render();});
+});
+$('moreForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const c=parseRand($('mAdd').value);
+  if(c===null||c<=0){showErr('mErr',AMT_HELP);return;}
+  showErr('mErr','');
+  state.starting+=c;$('mAdd').value='';save();render();
+  toast(rand(c)+' added to your total.',()=>{state.starting-=c;save();render();});
+});
+
+/* ---------- start ---------- */
+try{
+  const loaded=clean(JSON.parse(localStorage.getItem(KEY)||'null'));
+  if(loaded) state=loaded;
+}catch(e){}
+render();
+
+/* ---------- backup and restore ---------- */
+$('bkExport').addEventListener('click',async()=>{
+  const name='money-tracker-backup-'+ymd(new Date())+'.json';
+  const file=new File([JSON.stringify(state,null,2)],name,{type:'application/json'});
+  try{
+    if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Money Tracker backup'});return;}
+  }catch(e){if(e&&e.name==='AbortError') return;}
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(file);a.download=name;
+  document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+});
+$('bkImport').addEventListener('change',async e=>{
+  const f=e.target.files[0];e.target.value='';
+  if(!f) return;
+  try{
+    const r=clean(JSON.parse(await f.text()));
+    if(!r) throw new Error('not a backup');
+    const prev=state;
+    state=r;save();render();showErr('bkErr','');
+    toast('Backup restored.',()=>{state=prev;save();render();});
+  }catch(err){showErr('bkErr',"That file isn't a Money Tracker backup.");}
+});
+
+/* ---------- offline support ---------- */
+if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(()=>{});}
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});
+}
+})();
+</script>
+</body>
+</html>
